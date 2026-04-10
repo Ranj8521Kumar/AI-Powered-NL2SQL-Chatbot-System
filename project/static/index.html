@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NL2SQL — Clinic Intelligence</title>
+  <meta name="description" content="Ask natural language questions about clinic data. Powered by Vanna 2.0 and Groq." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+        <span>NL2SQL</span>
+      </div>
+      <button class="icon-btn" id="newChatBtn" title="New chat">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sidebar-section-label">Suggested Questions</div>
+    <nav class="suggestion-list" id="suggestionList">
+      <!-- Populated by JS -->
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="footer-badge" id="healthBadge">
+        <span class="dot" id="healthDot"></span>
+        <span id="healthText">Checking...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main Area ─────────────────────────────────────────────────────────── -->
+  <main class="main" id="main">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <button class="icon-btn" id="sidebarToggle" title="Toggle sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <span class="topbar-title">Clinic Intelligence</span>
+      <span class="model-badge">Groq · llama-3.3-70b</span>
+    </header>
+
+    <!-- Chat window -->
+    <section class="chat-window" id="chatWindow">
+
+      <!-- Welcome state (hidden once chat starts) -->
+      <div class="welcome" id="welcomeScreen">
+        <div class="welcome-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <ellipse cx="12" cy="12" rx="10" ry="10"/>
+            <path d="M8 12h8M12 8v8"/>
+          </svg>
+        </div>
+        <h1 class="welcome-title">Ask anything about your clinic</h1>
+        <p class="welcome-sub">Natural language questions → SQL → results and charts</p>
+        <div class="welcome-chips" id="welcomeChips">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="messages" id="messages"></div>
+    </section>
+
+    <!-- Input area -->
+    <footer class="input-area">
+      <div class="input-wrapper">
+        <textarea
+          id="questionInput"
+          class="question-input"
+          placeholder="Ask a question about patients, doctors, revenue..."
+          rows="1"
+          autocomplete="off"
+          spellcheck="true"
+          maxlength="500"
+        ></textarea>
+        <button class="send-btn" id="sendBtn" title="Send (Enter)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <p class="input-hint">Press <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line</p>
+    </footer>
+
+  </main>
+
+</body>
+</html>
