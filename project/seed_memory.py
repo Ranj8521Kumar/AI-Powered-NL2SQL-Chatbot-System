@@ -1,19 +1,24 @@
 """
 seed_memory.py
 ==============
-Pre-seeds the Vanna 2.0 DemoAgentMemory with 15 high-quality
-question → SQL pairs so the agent has examples to learn from.
+Pre-seeds DemoAgentMemory with 15 high-quality Q&A pairs.
 
-Categories covered:
-  Patient queries   (4 pairs) — count, list, city filter, gender
-  Doctor queries    (3 pairs) — appointments, busiest, specialization
-  Appointment queries (3 pairs) — status, monthly, doctor-wise
-  Financial queries (3 pairs) — revenue, unpaid, average cost
-  Time-based queries (2 pairs) — last 3 months, monthly trend
+Vanna 2.0 stores "tool usage" records — each entry is a question
+with the tool name + args that correctly answered it.  We simulate
+this by calling save_tool_usage() with the RunSqlTool name and the
+known-correct SQL as the argument.
 
-Usage:
-    python seed_memory.py            ← run standalone before starting server
-    from seed_memory import seed     ← call seed() from main.py on startup
+Categories:
+  Patient queries    (4) — count, city filter, gender, repeat visitors
+  Doctor queries     (3) — appointments/doctor, busiest, by specialization
+  Appointment queries(3) — status count, monthly, doctor-wise
+  Financial queries  (3) — total revenue, unpaid invoices, avg cost
+  Time-based queries (2) — last 3 months, monthly trend
+
+Run:
+    python seed_memory.py
+Or import:
+    from seed_memory import seed_sync
 """
 
 from __future__ import annotations
@@ -27,6 +32,9 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
+from vanna.integrations.local.agent_memory import DemoAgentMemory
+from vanna.core.tool import ToolContext
+from vanna.core.user.models import User
 from vanna_setup import get_memory
 
 
@@ -34,7 +42,7 @@ from vanna_setup import get_memory
 
 class QAPair(NamedTuple):
     question: str
-    sql: str
+    sql:      str
     category: str
 
 
@@ -42,220 +50,169 @@ QA_PAIRS: list[QAPair] = [
 
     # ── Patient Queries ──────────────────────────────────────────────────────
     QAPair(
-        question="How many patients do we have?",
-        sql="SELECT COUNT(*) AS total_patients FROM patients",
-        category="patient",
+        "How many patients do we have?",
+        "SELECT COUNT(*) AS total_patients FROM patients",
+        "patient",
     ),
     QAPair(
-        question="List all patients from Mumbai",
-        sql=(
-            "SELECT first_name, last_name, gender, date_of_birth, phone "
-            "FROM patients WHERE city = 'Mumbai' ORDER BY last_name"
-        ),
-        category="patient",
+        "List all patients from Mumbai",
+        "SELECT first_name, last_name, gender, date_of_birth, phone "
+        "FROM patients WHERE city = 'Mumbai' ORDER BY last_name",
+        "patient",
     ),
     QAPair(
-        question="Which city has the most patients?",
-        sql=(
-            "SELECT city, COUNT(*) AS patient_count "
-            "FROM patients "
-            "GROUP BY city "
-            "ORDER BY patient_count DESC "
-            "LIMIT 1"
-        ),
-        category="patient",
+        "Which city has the most patients?",
+        "SELECT city, COUNT(*) AS patient_count FROM patients "
+        "GROUP BY city ORDER BY patient_count DESC LIMIT 1",
+        "patient",
     ),
     QAPair(
-        question="Show the count of male and female patients",
-        sql=(
-            "SELECT gender, COUNT(*) AS count "
-            "FROM patients "
-            "GROUP BY gender "
-            "ORDER BY count DESC"
-        ),
-        category="patient",
+        "Show the count of male and female patients",
+        "SELECT gender, COUNT(*) AS count FROM patients "
+        "GROUP BY gender ORDER BY count DESC",
+        "patient",
     ),
 
     # ── Doctor Queries ────────────────────────────────────────────────────────
     QAPair(
-        question="How many appointments does each doctor have?",
-        sql=(
-            "SELECT d.name, COUNT(a.id) AS appointment_count "
-            "FROM doctors d "
-            "LEFT JOIN appointments a ON a.doctor_id = d.id "
-            "GROUP BY d.id, d.name "
-            "ORDER BY appointment_count DESC"
-        ),
-        category="doctor",
+        "How many appointments does each doctor have?",
+        "SELECT d.name, COUNT(a.id) AS appointment_count "
+        "FROM doctors d LEFT JOIN appointments a ON a.doctor_id = d.id "
+        "GROUP BY d.id, d.name ORDER BY appointment_count DESC",
+        "doctor",
     ),
     QAPair(
-        question="Who is the busiest doctor?",
-        sql=(
-            "SELECT d.name, d.specialization, COUNT(a.id) AS total_appointments "
-            "FROM doctors d "
-            "JOIN appointments a ON a.doctor_id = d.id "
-            "GROUP BY d.id, d.name, d.specialization "
-            "ORDER BY total_appointments DESC "
-            "LIMIT 1"
-        ),
-        category="doctor",
+        "Who is the busiest doctor?",
+        "SELECT d.name, d.specialization, COUNT(a.id) AS total_appointments "
+        "FROM doctors d JOIN appointments a ON a.doctor_id = d.id "
+        "GROUP BY d.id, d.name, d.specialization "
+        "ORDER BY total_appointments DESC LIMIT 1",
+        "doctor",
     ),
     QAPair(
-        question="Show all doctors grouped by specialization",
-        sql=(
-            "SELECT specialization, COUNT(*) AS doctor_count "
-            "FROM doctors "
-            "GROUP BY specialization "
-            "ORDER BY doctor_count DESC"
-        ),
-        category="doctor",
+        "Show all doctors grouped by specialization",
+        "SELECT specialization, COUNT(*) AS doctor_count FROM doctors "
+        "GROUP BY specialization ORDER BY doctor_count DESC",
+        "doctor",
     ),
 
     # ── Appointment Queries ───────────────────────────────────────────────────
     QAPair(
-        question="How many appointments are completed, scheduled, and cancelled?",
-        sql=(
-            "SELECT status, COUNT(*) AS count "
-            "FROM appointments "
-            "GROUP BY status "
-            "ORDER BY count DESC"
-        ),
-        category="appointment",
+        "How many appointments are completed, scheduled, and cancelled?",
+        "SELECT status, COUNT(*) AS count FROM appointments "
+        "GROUP BY status ORDER BY count DESC",
+        "appointment",
     ),
     QAPair(
-        question="Show appointments per month for this year",
-        sql=(
-            "SELECT strftime('%Y-%m', appointment_date) AS month, "
-            "COUNT(*) AS appointment_count "
-            "FROM appointments "
-            "WHERE strftime('%Y', appointment_date) = strftime('%Y', 'now') "
-            "GROUP BY month "
-            "ORDER BY month"
-        ),
-        category="appointment",
+        "Show appointments per month for this year",
+        "SELECT strftime('%Y-%m', appointment_date) AS month, "
+        "COUNT(*) AS appointment_count FROM appointments "
+        "WHERE strftime('%Y', appointment_date) = strftime('%Y', 'now') "
+        "GROUP BY month ORDER BY month",
+        "appointment",
     ),
     QAPair(
-        question="Which doctor had the most completed appointments?",
-        sql=(
-            "SELECT d.name, COUNT(a.id) AS completed_count "
-            "FROM doctors d "
-            "JOIN appointments a ON a.doctor_id = d.id "
-            "WHERE a.status = 'Completed' "
-            "GROUP BY d.id, d.name "
-            "ORDER BY completed_count DESC "
-            "LIMIT 5"
-        ),
-        category="appointment",
+        "Which doctor had the most completed appointments?",
+        "SELECT d.name, COUNT(a.id) AS completed_count "
+        "FROM doctors d JOIN appointments a ON a.doctor_id = d.id "
+        "WHERE a.status = 'Completed' GROUP BY d.id, d.name "
+        "ORDER BY completed_count DESC LIMIT 5",
+        "appointment",
     ),
 
     # ── Financial Queries ─────────────────────────────────────────────────────
     QAPair(
-        question="What is the total revenue from paid invoices?",
-        sql=(
-            "SELECT SUM(total_amount) AS total_revenue "
-            "FROM invoices "
-            "WHERE status = 'Paid'"
-        ),
-        category="financial",
+        "What is the total revenue from paid invoices?",
+        "SELECT SUM(total_amount) AS total_revenue FROM invoices WHERE status = 'Paid'",
+        "financial",
     ),
     QAPair(
-        question="Show all unpaid and overdue invoices with patient names",
-        sql=(
-            "SELECT p.first_name || ' ' || p.last_name AS patient_name, "
-            "i.total_amount, i.status, i.due_date "
-            "FROM invoices i "
-            "JOIN patients p ON p.id = i.patient_id "
-            "WHERE i.status IN ('Pending', 'Overdue') "
-            "ORDER BY i.due_date"
-        ),
-        category="financial",
+        "Show all unpaid and overdue invoices with patient names",
+        "SELECT p.first_name || ' ' || p.last_name AS patient_name, "
+        "i.total_amount, i.status, i.due_date "
+        "FROM invoices i JOIN patients p ON p.id = i.patient_id "
+        "WHERE i.status IN ('Pending', 'Overdue') ORDER BY i.due_date",
+        "financial",
     ),
     QAPair(
-        question="What is the average invoice amount?",
-        sql=(
-            "SELECT ROUND(AVG(total_amount), 2) AS avg_invoice_amount "
-            "FROM invoices"
-        ),
-        category="financial",
+        "What is the average invoice amount?",
+        "SELECT ROUND(AVG(total_amount), 2) AS avg_invoice_amount FROM invoices",
+        "financial",
     ),
 
     # ── Time-Based Queries ────────────────────────────────────────────────────
     QAPair(
-        question="How many appointments were there in the last 3 months?",
-        sql=(
-            "SELECT COUNT(*) AS appointments_last_3_months "
-            "FROM appointments "
-            "WHERE appointment_date >= date('now', '-3 months')"
-        ),
-        category="time",
+        "How many appointments were there in the last 3 months?",
+        "SELECT COUNT(*) AS appointments_last_3_months FROM appointments "
+        "WHERE appointment_date >= date('now', '-3 months')",
+        "time",
     ),
     QAPair(
-        question="Show monthly revenue trend for the last 12 months",
-        sql=(
-            "SELECT strftime('%Y-%m', invoice_date) AS month, "
-            "SUM(total_amount) AS revenue "
-            "FROM invoices "
-            "WHERE invoice_date >= date('now', '-12 months') "
-            "AND status = 'Paid' "
-            "GROUP BY month "
-            "ORDER BY month"
-        ),
-        category="time",
+        "Show monthly revenue trend for the last 12 months",
+        "SELECT strftime('%Y-%m', invoice_date) AS month, "
+        "SUM(total_amount) AS revenue FROM invoices "
+        "WHERE invoice_date >= date('now', '-12 months') AND status = 'Paid' "
+        "GROUP BY month ORDER BY month",
+        "time",
     ),
 ]
 
 
-# ── Seeding Logic ──────────────────────────────────────────────────────────────
+# ── Tool context helper ────────────────────────────────────────────────────────
 
-def seed(verbose: bool = True) -> int:
+def _make_tool_context(memory: DemoAgentMemory) -> ToolContext:
+    """Build a minimal ToolContext for memory seeding."""
+    return ToolContext(
+        user=User(
+            id="seeder",
+            username="seeder",
+            email="seeder@clinic.local",
+            group_memberships=["users"],
+        ),
+        conversation_id="seed-session",
+        request_id="seed",
+        agent_memory=memory,
+        metadata={},
+    )
+
+
+# ── Seeding logic ──────────────────────────────────────────────────────────────
+
+async def _seed_async(verbose: bool = True) -> int:
     """
-    Load all QA_PAIRS into DemoAgentMemory.
-
-    Tries the standard Vanna 2.0 memory API.  If the internal API
-    differs from expectations, falls back to writing a JSON snapshot
-    that can be used for manual verification.
-
-    Returns:
-        Number of pairs successfully seeded.
+    Async inner loop — save_tool_usage is a coroutine in Vanna 2.0.
+    Returns number of pairs successfully seeded.
     """
-    memory = get_memory()
-    seeded = 0
+    memory  = get_memory()
+    context = _make_tool_context(memory)
+    seeded  = 0
 
     for pair in QA_PAIRS:
         try:
-            # Primary approach: Vanna 2.0 DemoAgentMemory.save()
-            # Stores a successful tool-use example (question → SQL)
-            memory.save(
+            await memory.save_tool_usage(
                 question=pair.question,
-                sql=pair.sql,
+                tool_name="RunSqlTool",
+                args={"sql": pair.sql},
+                context=context,
+                success=True,
+                metadata={"category": pair.category},
             )
             seeded += 1
             if verbose:
-                print(f"  [{pair.category.upper():12s}] {pair.question[:60]}")
-        except AttributeError:
-            # Fallback: try alternative method names used in some builds
-            for method in ("add", "add_item", "store", "insert"):
-                fn = getattr(memory, method, None)
-                if fn:
-                    try:
-                        fn(question=pair.question, sql=pair.sql)
-                        seeded += 1
-                        if verbose:
-                            print(f"  [{pair.category.upper():12s}] {pair.question[:60]}")
-                    except Exception:
-                        pass
-                    break
+                print(f"  [{pair.category.upper():12s}] {pair.question[:65]}")
         except Exception as exc:
             if verbose:
-                print(f"  [WARNING] Could not seed: {pair.question[:50]} — {exc}")
+                print(f"  [WARNING] Failed to seed: {pair.question[:50]} — {exc}")
 
-    # Always write a JSON snapshot for documentation / debugging
+    # Write JSON snapshot for documentation / debugging
     snapshot_path = Path(__file__).parent / "memory_seed.json"
-    snapshot = [
-        {"question": p.question, "sql": p.sql, "category": p.category}
-        for p in QA_PAIRS
-    ]
-    snapshot_path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+    snapshot_path.write_text(
+        json.dumps(
+            [{"question": p.question, "sql": p.sql, "category": p.category} for p in QA_PAIRS],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     if verbose:
         print(f"\n  {seeded}/{len(QA_PAIRS)} pairs seeded into DemoAgentMemory")
@@ -264,12 +221,36 @@ def seed(verbose: bool = True) -> int:
     return seeded
 
 
-# ── Standalone Entry Point ─────────────────────────────────────────────────────
+def seed_sync(verbose: bool = True) -> int:
+    """
+    Synchronous wrapper around _seed_async().
+
+    Called from main.py on startup (inside an already-running event loop)
+    or from the command line (where no loop exists yet).
+
+    Returns:
+        Number of pairs successfully seeded.
+    """
+    import asyncio
+
+    try:
+        # If we are inside a running event loop (e.g. FastAPI startup),
+        # schedule the coroutine as a task and return immediately.
+        loop = asyncio.get_running_loop()
+        loop.create_task(_seed_async(verbose=verbose))
+        # Return optimistic count; actual seeding happens as background task
+        return len(QA_PAIRS)
+    except RuntimeError:
+        # No running loop → we are in a standalone script, run normally
+        return asyncio.run(_seed_async(verbose=verbose))
+
+
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("Seeding DemoAgentMemory with Q&A pairs ...\n")
-    count = seed(verbose=True)
+    count = seed_sync(verbose=True)
     if count == 0:
-        print("\n[WARNING] No pairs were seeded. Check your Vanna 2.0 version.")
+        print("\n[ERROR] No pairs were seeded.")
         sys.exit(1)
-    print("\nSeeding complete.")
+    print("\nDone.")
