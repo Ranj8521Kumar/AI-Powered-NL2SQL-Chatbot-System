@@ -172,51 +172,48 @@ async def _generate_sql_via_agent(question: str) -> str:
 
     send_message() is an async generator that yields UiComponent objects.
     We collect all text components and extract the SQL from them.
+    If the Groq LLM returns 429, we re-raise so the chat() handler
+    can trigger the Gemini fallback.
     """
     from vanna_setup import make_request_context
 
     agent   = _get_agent()
     ctx     = make_request_context()
-    sql_out = ""
     text_parts: list[str] = []
+    rate_limit_error = None
 
-    async for component in agent.send_message(request_context=ctx, message=question):
-        ctype = type(component).__name__
-
-        # DataFrameComponent: agent ran the SQL and got results
-        if hasattr(component, "data") and component.data is not None:
-            continue  # We'll run SQL ourselves after validation
-
-        # SimpleTextComponent / RichTextComponent — may contain SQL
-        if hasattr(component, "text") and component.text:
-            text_parts.append(str(component.text))
-
-        # ArtifactComponent — often contains raw SQL
-        if hasattr(component, "content") and component.content:
-            text_parts.append(str(component.content))
+    try:
+        async for component in agent.send_message(request_context=ctx, message=question):
+            # SimpleTextComponent / RichTextComponent — may contain SQL
+            if hasattr(component, "text") and component.text:
+                text_parts.append(str(component.text))
+            # ArtifactComponent — often contains raw SQL
+            if hasattr(component, "content") and component.content:
+                text_parts.append(str(component.content))
+    except Exception as agent_exc:
+        err = str(agent_exc)
+        if "429" in err or "rate_limit" in err.lower() or "Rate limit" in err:
+            log.warning("[AGENT] Groq 429 inside Vanna agent — re-raising for fallback")
+            raise  # let chat() catch it and trigger Gemini fallback
+        log.warning(f"[AGENT] Non-fatal error: {agent_exc}")
 
     full_text = "\n".join(text_parts)
-    sql_out = _extract_sql(full_text)
+    sql_out   = _extract_sql(full_text)
 
     if not sql_out:
-        # Fallback: ask via plain LLM call with explicit prompt
-        sql_out = await _ask_llm_direct(question)
+        # Agent gave no SQL — try a direct Groq call (may also raise 429)
+        sql_out = await _ask_llm_direct(question, provider="groq")
 
     return sql_out.strip()
 
 
-async def _ask_llm_direct(question: str) -> str:
+async def _ask_llm_direct(question: str, provider: str = "groq") -> str:
     """
-    Direct Groq chat completion call — used as fallback when the agent
-    response contains no parseable SQL.
+    Direct chat completion call to the specified provider.
+
+    provider: "groq"   -> Groq API (primary)
+              "gemini" -> Google Gemini via native SDK (fallback)
     """
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
-        base_url="https://api.groq.com/openai/v1",
-    )
-
     schema = (
         "Tables: patients(id, first_name, last_name, gender, date_of_birth, city, email, phone, created_at), "
         "doctors(id, name, specialization, email, phone, years_experience), "
@@ -224,24 +221,48 @@ async def _ask_llm_direct(question: str) -> str:
         "treatments(id, appointment_id, treatment_name, cost, description), "
         "invoices(id, patient_id, appointment_id, total_amount, status, invoice_date, due_date, paid_date)"
     )
-
-    resp = await client.chat.completions.create(
-        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    f"You are a SQLite expert. Database schema: {schema}. "
-                    "Return ONLY the SQL SELECT query, no explanation, no markdown fences."
-                ),
-            },
-            {"role": "user", "content": question},
-        ],
-        temperature=0.1,
-        max_tokens=512,
+    system_prompt = (
+        f"You are a SQLite expert. Database schema: {schema}. "
+        "Return ONLY the SQL SELECT query - no explanation, no markdown fences, no backticks."
     )
 
-    return resp.choices[0].message.content.strip()
+    if provider == "gemini":
+        api_key = os.getenv("GOOGLE_API_KEY", "")
+        model   = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+        if not api_key or api_key == "your-google-api-key-here":
+            raise EnvironmentError(
+                "GOOGLE_API_KEY is not set in .env. "
+                "Get a free key at https://aistudio.google.com/apikey"
+            )
+        import google.genai as genai
+        genai_client = genai.Client(api_key=api_key)
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: genai_client.models.generate_content(
+                model=model,
+                contents=system_prompt + "\n\nQuestion: " + question
+            )
+        )
+        return response.text.strip()
+
+    else:  # groq (default)
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(
+            api_key=os.getenv("GROQ_API_KEY", ""),
+            base_url="https://api.groq.com/openai/v1",
+        )
+        resp = await client.chat.completions.create(
+            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": question},
+            ],
+            temperature=0.1,
+            max_tokens=512,
+        )
+        return resp.choices[0].message.content.strip()
+
 
 
 def _extract_sql(text: str) -> str:
@@ -373,23 +394,87 @@ async def chat(request: ChatRequest):
         )
     except Exception as exc:
         err_str = str(exc)
-        # Groq / OpenAI rate limit — friendly message
+        # Groq / OpenAI rate limit (429) — try Gemini fallback
         if "429" in err_str or "rate_limit" in err_str.lower() or "Rate limit" in err_str:
-            wait_hint = ""
-            import re as _re
-            m = _re.search(r"try again in (\d+m[\d.]+s)", err_str)
-            if m:
-                wait_hint = f" Please wait {m.group(1)} and try again."
-            msg = f"Groq API daily token limit reached.{wait_hint}"
-            log.warning(f"[RATE LIMIT] {msg}")
-            return ChatResponse(
-                message=msg,
-                error="rate_limit_exceeded",
-                execution_time_ms=int(time.time() * 1000) - t0,
-            )
+            log.warning("[RATE LIMIT] Groq limit hit — switching to Gemini fallback ...")
+            return await _handle_with_gemini_fallback(question, t0)
         log.error(f"[ERROR] {exc}\n{traceback.format_exc()}")
         return ChatResponse(
             message="An unexpected error occurred. Please try again.",
+            error=str(exc),
+            execution_time_ms=int(time.time() * 1000) - t0,
+        )
+
+
+async def _handle_with_gemini_fallback(question: str, t0: int) -> "ChatResponse":
+    """
+    Full pipeline using Gemini as the SQL generator.
+    Called automatically when Groq returns a 429 rate-limit error.
+    """
+    log.info("[GEMINI] Generating SQL via Gemini fallback ...")
+    try:
+        sql = await _ask_llm_direct(question, provider="gemini")
+        sql = _extract_sql(sql) or sql.strip()
+        log.info(f"[GEMINI SQL] {sql[:120]}")
+
+        if not sql:
+            return ChatResponse(
+                message="Groq limit reached and Gemini could not generate SQL. Please try again later.",
+                error="No SQL from fallback",
+                execution_time_ms=int(time.time() * 1000) - t0,
+            )
+
+        v = validate_sql(sql)
+        if not v.is_valid:
+            return ChatResponse(
+                message=f"Gemini generated an unsafe query: {v.error}",
+                sql_query=sql,
+                error=v.error,
+                execution_time_ms=int(time.time() * 1000) - t0,
+            )
+
+        columns, rows = _execute_sql(sql)
+        row_count = len(rows)
+        chart_dict = generate_chart(columns, rows, question)
+        chart_type = _detect_chart_type(chart_dict)
+        msg = _build_message(question, row_count, columns, rows)
+        elapsed = int(time.time() * 1000) - t0
+        log.info(f"[GEMINI DONE] {elapsed}ms | rows={row_count} | chart={chart_type}")
+
+        return ChatResponse(
+            message=msg + "  *(answered via Gemini fallback — Groq limit reached)*",
+            sql_query=sql,
+            columns=columns,
+            rows=_to_python(rows),
+            row_count=row_count,
+            chart=_to_python(chart_dict),
+            chart_type=chart_type,
+            execution_time_ms=elapsed,
+        )
+
+    except EnvironmentError as env_err:
+        # GOOGLE_API_KEY not configured
+        log.error(f"[GEMINI] Not configured: {env_err}")
+        return ChatResponse(
+            message=(
+                "Groq API daily limit reached and no Gemini fallback is configured. "
+                "Add GOOGLE_API_KEY to .env (free at aistudio.google.com/apikey)."
+            ),
+            error="rate_limit_exceeded; gemini_not_configured",
+            execution_time_ms=int(time.time() * 1000) - t0,
+        )
+    except Exception as exc:
+        err_str = str(exc)
+        # Gemini also rate-limited?
+        if "429" in err_str or "quota" in err_str.lower():
+            return ChatResponse(
+                message="Both Groq and Gemini have reached their limits. Please try again later.",
+                error="all_providers_rate_limited",
+                execution_time_ms=int(time.time() * 1000) - t0,
+            )
+        log.error(f"[GEMINI ERROR] {exc}\n{traceback.format_exc()}")
+        return ChatResponse(
+            message="Groq limit reached and Gemini fallback also failed. Please try again later.",
             error=str(exc),
             execution_time_ms=int(time.time() * 1000) - t0,
         )

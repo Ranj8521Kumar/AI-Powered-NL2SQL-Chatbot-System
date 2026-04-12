@@ -14,6 +14,7 @@ plotly>=5.18.0
 
 # ── Config ────────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0
+google-genai>=1.0.0           # Gemini fallback LLM (new Google Gen AI SDK)
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 python-multipart>=0.0.9
