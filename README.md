@@ -30,7 +30,7 @@ A production-ready **Natural Language to SQL (NL2SQL)** conversational agent bui
 
 ## 🏛️ System Architecture
 
-![Architecture](AI-Powered%20NL2SQL%20System%20Architecture.png)
+![Architecture](assets/AI-Powered%20NL2SQL%20System%20Architecture.png)
 
 1. **User Input:** Natural language queries sent via standard UI `/chat` interface.
 2. **LLM Orchestration:** `Vanna 2.0` parses schema metadata and agent memory context.
