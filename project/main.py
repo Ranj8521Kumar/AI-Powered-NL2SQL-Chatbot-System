@@ -118,7 +118,7 @@ class ChatResponse(BaseModel):
 # ── Direct SQL path (bypasses agent for speed + reliability) ───────────────────
 
 def _execute_sql(sql: str) -> tuple[list[str], list[list]]:
-    """Execute a validated SQL SELECT on clinic.db and return (columns, rows)."""
+    """Execute a validated SQL SELECT on clinic.db and return (columns, rows) as pure Python."""
     if not DB_PATH.exists():
         raise FileNotFoundError(
             f"clinic.db not found at {DB_PATH}. Run 'python setup_database.py' first."
@@ -130,9 +130,38 @@ def _execute_sql(sql: str) -> tuple[list[str], list[list]]:
         data = cur.fetchall()
         if not data:
             return [], []
-        return list(data[0].keys()), [list(r) for r in data]
+        columns = list(data[0].keys())
+        rows    = [_to_python(list(r)) for r in data]
+        return columns, rows
     finally:
         conn.close()
+
+
+def _to_python(obj):
+    """
+    Recursively convert numpy / pandas scalars to native Python types
+    so Pydantic can serialize them without errors.
+    """
+    try:
+        import numpy as np
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+    except ImportError:
+        pass
+    if isinstance(obj, dict):
+        return {k: _to_python(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_python(v) for v in obj]
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return obj
+
 
 
 # ── LLM-based SQL generation ───────────────────────────────────────────────────
@@ -328,9 +357,9 @@ async def chat(request: ChatRequest):
             message=msg,
             sql_query=sql,
             columns=columns,
-            rows=rows,
+            rows=_to_python(rows),
             row_count=row_count,
-            chart=chart_dict,
+            chart=_to_python(chart_dict),
             chart_type=chart_type,
             execution_time_ms=elapsed,
         )
@@ -343,6 +372,21 @@ async def chat(request: ChatRequest):
             execution_time_ms=int(time.time() * 1000) - t0,
         )
     except Exception as exc:
+        err_str = str(exc)
+        # Groq / OpenAI rate limit — friendly message
+        if "429" in err_str or "rate_limit" in err_str.lower() or "Rate limit" in err_str:
+            wait_hint = ""
+            import re as _re
+            m = _re.search(r"try again in (\d+m[\d.]+s)", err_str)
+            if m:
+                wait_hint = f" Please wait {m.group(1)} and try again."
+            msg = f"Groq API daily token limit reached.{wait_hint}"
+            log.warning(f"[RATE LIMIT] {msg}")
+            return ChatResponse(
+                message=msg,
+                error="rate_limit_exceeded",
+                execution_time_ms=int(time.time() * 1000) - t0,
+            )
         log.error(f"[ERROR] {exc}\n{traceback.format_exc()}")
         return ChatResponse(
             message="An unexpected error occurred. Please try again.",
