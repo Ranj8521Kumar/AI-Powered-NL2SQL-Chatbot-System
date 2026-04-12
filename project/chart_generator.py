@@ -78,6 +78,11 @@ def generate_chart(
     num_cols  = _numeric_cols(df)
     text_cols = _text_cols(df)
 
+    # Force Plotly to emit standard JSON lists instead of base64 bdata TypedArrays
+    # which the frontend Plotly.js ignores and defaults to index-based charts.
+    for col in num_cols:
+        df[col] = df[col].astype(object)
+
     # Single scalar result — no chart useful
     if len(df) == 1 and len(num_cols) == 1 and len(text_cols) == 0:
         return None
