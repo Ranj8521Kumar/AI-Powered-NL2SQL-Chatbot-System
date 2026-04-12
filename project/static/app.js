@@ -126,7 +126,7 @@ async function checkHealth() {
     const data = await res.json();
     if (data.status === 'ok' && data.database === 'connected') {
       healthDot.className  = 'dot ok';
-      healthText.textContent = `Live · ${data.agent_memory_items} examples`;
+      healthText.textContent = `Live`;
     } else {
       throw new Error('DB not connected');
     }
