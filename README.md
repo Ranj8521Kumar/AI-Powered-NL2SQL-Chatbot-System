@@ -130,6 +130,6 @@ The system passes **100% (20/20)** of the test suites designed iteratively in `R
 ---
 
 ## 🎯 Author
-**Ranjan Kumar**  
+**Ranjan Kumar Pandit**  
 
 *Designed and engineered as part of the rigorous NLP internship assignment requirements, focusing on production reliability, clean code architectures, fallback mechanisms, and robust security.*
