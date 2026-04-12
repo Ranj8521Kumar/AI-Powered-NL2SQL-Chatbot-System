@@ -26,7 +26,7 @@ A production-ready **Natural Language to SQL (NL2SQL)** conversational agent bui
 ![Chat Interface](assets/ui_screenshot_1.png)
 
 ### Automated Data Visualization
-![Plotly Charts Rendering](assets/ui_screenshot_2.webp)
+![Plotly Charts Rendering](assets/ui_screenshot_2.png)
 
 ## 🏛️ System Architecture
 
