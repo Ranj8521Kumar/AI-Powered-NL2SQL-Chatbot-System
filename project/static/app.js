@@ -14,15 +14,25 @@
 // ── Suggested questions (sidebar + welcome chips) ─────────────────────────────
 const SUGGESTIONS = [
   'How many patients do we have?',
-  'Who is the busiest doctor?',
-  'Show revenue by specialization',
-  'Which city has the most patients?',
-  'List overdue invoices',
-  'How many appointments last month?',
+  'List all doctors and their specializations',
+  'Show me appointments for last month',
+  'Which doctor has the most appointments?',
+  'What is the total revenue?',
+  'Show revenue by doctor',
+  'How many cancelled appointments last quarter?',
   'Top 5 patients by spending',
-  'Show monthly revenue trend',
-  'How many completed appointments per doctor?',
-  'What is the average invoice amount?',
+  'Average treatment cost by specialization',
+  'Show monthly appointment count for the past 6 months',
+  'Which city has the most patients?',
+  'List patients who visited more than 3 times',
+  'Show unpaid invoices',
+  'What percentage of appointments are no-shows?',
+  'Show the busiest day of the week for appointments',
+  'Revenue trend by month',
+  'Average appointment duration by doctor',
+  'List patients with overdue invoices',
+  'Compare revenue between departments',
+  'Show patient registration trend by month',
 ];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -53,14 +63,49 @@ function init() {
 // ── Suggestions ────────────────────────────────────────────────────────────────
 function populateSuggestions() {
   // Sidebar list
-  SUGGESTIONS.forEach(q => {
+  let isExpanded = false;
+  const suggestionElements = [];
+
+  SUGGESTIONS.forEach((q, index) => {
     const btn = document.createElement('button');
     btn.className = 'suggestion-item';
     btn.textContent = q;
     btn.title = q;
+    if (index >= 10) {
+      btn.style.display = 'none'; // Initially hidden
+    }
     btn.addEventListener('click', () => submitQuestion(q));
     suggestionList.appendChild(btn);
+    suggestionElements.push(btn);
   });
+
+  // Expandable button
+  const toggleBtn = document.createElement('button');
+  toggleBtn.className = 'suggestion-toggle-btn';
+  toggleBtn.innerHTML = `<span>Show all 20 questions</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>`;
+  
+  toggleBtn.addEventListener('click', () => {
+    isExpanded = !isExpanded;
+    suggestionElements.forEach((btn, idx) => {
+      if (idx >= 10) {
+        btn.style.display = isExpanded ? 'block' : 'none';
+      }
+    });
+    toggleBtn.innerHTML = isExpanded 
+      ? `<span>Show fewer questions</span>
+         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+           <polyline points="18 15 12 9 6 15"></polyline>
+         </svg>`
+      : `<span>Show all 20 questions</span>
+         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+           <polyline points="6 9 12 15 18 9"></polyline>
+         </svg>`;
+  });
+  
+  suggestionList.appendChild(toggleBtn);
 
   // Welcome chips (first 6)
   SUGGESTIONS.slice(0, 6).forEach(q => {
