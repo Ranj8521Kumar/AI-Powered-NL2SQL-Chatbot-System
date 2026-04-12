@@ -117,6 +117,44 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
+## 📡 API Documentation
+
+### `POST /chat`
+Generates and executes SQL based on a user's natural language question.
+
+**Request:**
+```json
+{
+  "question": "What is the total revenue?"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "The total revenue is...",
+  "sql_query": "SELECT SUM(total_amount) AS total_revenue FROM invoices",
+  "columns": ["total_revenue"],
+  "rows": [[45800.5]],
+  "row_count": 1,
+  "execution_time_ms": 142
+}
+```
+
+### `GET /health`
+Returns the operational status of the service, database connectivity, and the number of context queries pre-loaded globally into memory.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "agent_memory_items": 15
+}
+```
+
+---
+
 ## 🧪 Testing and Quality Assurance
 An exhaustive 20-question comprehensive evaluation suite has been built into the system covering:
 - Simple `SELECT` queries
