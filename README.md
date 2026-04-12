@@ -20,6 +20,14 @@ A production-ready **Natural Language to SQL (NL2SQL)** conversational agent bui
 - **Automated Chart Intelligence:** Analyzes resultant datasets using Plotly and automatically determines the most effective visualization type (Bar, Pie, Line). 
 - **Modern UI/UX Frontend:** A sleek, fully-integrated Dark-Mode interface with interactive code highlighting, responsive design, and dynamic data tables.
 
+## 💻 UI Showcase
+
+### AI Chat Interface & Dynamic SQL Generation
+![Chat Interface](assets/ui_screenshot_1.png)
+
+### Automated Data Visualization
+![Plotly Charts Rendering](assets/ui_screenshot_2.webp)
+
 ## 🏛️ System Architecture
 
 ![Architecture](AI-Powered%20NL2SQL%20System%20Architecture.png)
