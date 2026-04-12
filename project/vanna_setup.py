@@ -48,7 +48,7 @@ class AnonUserResolver(UserResolver):
     Suitable for demo / local deployments with no authentication.
     """
 
-    def resolve_user(self, request_context: RequestContext) -> User:
+    async def resolve_user(self, request_context: RequestContext) -> User:
         return User(
             id="demo-user",
             username="demo",
