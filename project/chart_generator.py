@@ -148,7 +148,7 @@ def _infer_title(question: str) -> str:
 
 
 def _style_and_export(fig: go.Figure) -> dict:
-    """Apply consistent dark-minimal styling and return as dict."""
+    """Apply consistent dark-minimal styling and return as a JSON-safe dict."""
     fig.update_layout(
         paper_bgcolor="#1a1a1a",
         plot_bgcolor="#1a1a1a",
@@ -159,4 +159,31 @@ def _style_and_export(fig: go.Figure) -> dict:
         margin=dict(l=40, r=40, t=60, b=40),
         legend=dict(bgcolor="#1a1a1a", bordercolor="#333333"),
     )
-    return fig.to_dict()
+    raw = fig.to_dict()
+    return _make_json_safe(raw)
+
+
+def _make_json_safe(obj):
+    """
+    Recursively convert numpy / pandas types to native Python so that
+    Pydantic / json.dumps can serialise the Plotly figure dict.
+    """
+    import numpy as np
+
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    # pandas Timestamp, etc.
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return obj
+
