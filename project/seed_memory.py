@@ -216,7 +216,7 @@ async def _seed_async(verbose: bool = True) -> int:
 
     if verbose:
         print(f"\n  {seeded}/{len(QA_PAIRS)} pairs seeded into DemoAgentMemory")
-        print(f"  Snapshot written → {snapshot_path}")
+        print(f"  Snapshot written -> {snapshot_path}")
 
     return seeded
 
@@ -248,7 +248,7 @@ def seed_sync(verbose: bool = True) -> int:
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("Seeding DemoAgentMemory with Q&A pairs ...\n")
+    print("Seeding DemoAgentMemory with Q+A pairs ...\n")
     count = seed_sync(verbose=True)
     if count == 0:
         print("\n[ERROR] No pairs were seeded.")
